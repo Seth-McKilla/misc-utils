@@ -10,8 +10,8 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "self-update": "^0.0.1",
-    "sharp": "^0.33.5"
+    "heic-convert": "^2.1.0",
+    "self-update": "^0.0.1"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
