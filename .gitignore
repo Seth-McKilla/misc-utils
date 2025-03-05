@@ -1,5 +1,8 @@
 node_modules
-input_heic/*
-!input_heic/.gitkeep
-output_jpg/*
-!output_jpg/.gitkeep
+# Ignore everything in the heic2jpg_input_heic and heic2jpg_output_jpg folders
+heic2jpg/input_heic/*
+heic2jpg/output_jpg/*
+
+# But do not ignore the .gitkeep files
+!heic2jpg/input_heic/.gitkeep
+!heic2jpg/output_jpg/.gitkeep
