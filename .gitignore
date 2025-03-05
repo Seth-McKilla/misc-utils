@@ -1,1 +1,5 @@
 node_modules
+input_heic/*
+!input_heic/.gitkeep
+output_jpg/*
+!output_jpg/.gitkeep
