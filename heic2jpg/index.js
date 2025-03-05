@@ -3,8 +3,8 @@ const path = require("path");
 const sharp = require("sharp");
 
 // Change these paths as needed
-const inputDir = path.join(__dirname, "heic2jpg", "input_heic");
-const outputDir = path.join(__dirname, "heic2jpg", "output_jpg");
+const inputDir = path.join(__dirname, "input_heic");
+const outputDir = path.join(__dirname, "output_jpg");
 
 // Ensure the output directory exists
 if (!fs.existsSync(outputDir)) {

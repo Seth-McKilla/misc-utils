@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "heic2jpg": "node heic2jpg"
   },
   "keywords": [],
   "author": "",
@@ -12,5 +12,13 @@
   "dependencies": {
     "self-update": "^0.0.1",
     "sharp": "^0.33.5"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "sharp"
+    ],
+    "onlyBuiltDependencies": [
+      "sharp"
+    ]
   }
 }
