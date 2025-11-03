@@ -19,11 +19,13 @@ const PDFDocument = require("pdfkit");
 
 function printHelp() {
   const msg = `
-Usage: pst2pdf <input.pst> [options]
+Usage: pst2pdf [<input.pst>] [options]
 
 Options:
-	-o, --output <file>     Output PDF path (default: <input>.pdf)
-	-w, --workdir <dir>     Working directory for extracted files (default: temp)
+  -o, --output <file>     Output PDF path (default: <input>.pdf)
+  -i, --input-dir <dir>   Directory to read .pst files from (batch mode)
+  -O, --output-dir <dir>  Directory to write generated PDFs to (batch mode)
+  -w, --workdir <dir>     Working directory for extracted files (default: temp)
 	--keep-workdir          Do not delete working directory
 	--max-emails <n>        Limit processed emails (for quick tests)
 	-h, --help              Show this help
@@ -181,43 +183,26 @@ async function renderPdf(threads, outPdf) {
   });
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  if (args.length === 0 || args.includes("-h") || args.includes("--help")) {
-    printHelp();
-    process.exit(0);
+async function ensureDirs(...dirs) {
+  for (const d of dirs) {
+    if (!d) continue;
+    await fsp.mkdir(d, { recursive: true });
   }
+}
 
-  const inputPst = args[0];
-  if (!inputPst || !fs.existsSync(inputPst)) {
-    console.error("Input .pst not found.");
-    process.exit(1);
-  }
-
-  let outPdf = null;
-  let workdir = null;
-  let keepWorkdir = false;
-  let maxEmails = 0;
-  for (let i = 1; i < args.length; i++) {
-    const a = args[i];
-    if ((a === "-o" || a === "--output") && args[i + 1]) {
-      outPdf = args[++i];
-    } else if ((a === "-w" || a === "--workdir") && args[i + 1]) {
-      workdir = args[++i];
-    } else if (a === "--keep-workdir") {
-      keepWorkdir = true;
-    } else if (a === "--max-emails" && args[i + 1]) {
-      maxEmails = parseInt(args[++i], 10) || 0;
-    }
-  }
+async function processSinglePst(
+  inputPst,
+  outPdf,
+  workdir,
+  keepWorkdir,
+  maxEmails
+) {
   if (!outPdf)
     outPdf = path.resolve(
       path.dirname(inputPst),
       path.basename(inputPst, path.extname(inputPst)) + ".pdf"
     );
   if (!workdir) workdir = await fsp.mkdtemp(path.join(os.tmpdir(), "pst2pdf-"));
-
-  // Run pipeline
   try {
     const extractDir = path.join(workdir, "eml");
     await runReadPst(inputPst, extractDir);
@@ -226,9 +211,6 @@ async function main() {
     const threads = groupByThread(emails);
     await renderPdf(threads, outPdf);
     console.log(`Wrote ${outPdf}`);
-  } catch (e) {
-    console.error(e.message || e);
-    process.exitCode = 1;
   } finally {
     if (!keepWorkdir) {
       try {
@@ -238,6 +220,100 @@ async function main() {
       console.log("Working directory kept at:", workdir);
     }
   }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  if (args.includes("-h") || args.includes("--help")) {
+    printHelp();
+    process.exit(0);
+  }
+
+  let inputPst = null;
+  let outPdf = null;
+  let workdir = null;
+  let keepWorkdir = false;
+  let maxEmails = 0;
+  let inputDir = null;
+  let outputDir = null;
+  // Default folders inside this tool's directory
+  const toolRoot = path.resolve(__dirname);
+  const defaultInputDir = path.join(toolRoot, "input_pst");
+  const defaultOutputDir = path.join(toolRoot, "output_pdf");
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i];
+    if ((a === "-o" || a === "--output") && args[i + 1]) {
+      outPdf = args[++i];
+    } else if ((a === "-i" || a === "--input-dir") && args[i + 1]) {
+      inputDir = args[++i];
+    } else if ((a === "-O" || a === "--output-dir") && args[i + 1]) {
+      outputDir = args[++i];
+    } else if ((a === "-w" || a === "--workdir") && args[i + 1]) {
+      workdir = args[++i];
+    } else if (a === "--keep-workdir") {
+      keepWorkdir = true;
+    } else if (a === "--max-emails" && args[i + 1]) {
+      maxEmails = parseInt(args[++i], 10) || 0;
+    }
+  }
+  // Ensure default input/output directories exist
+  await ensureDirs(defaultInputDir, defaultOutputDir);
+
+  // If a positional arg is present and not a flag, treat it as inputPst
+  if (args[0] && !args[0].startsWith("-")) {
+    inputPst = args[0];
+  }
+
+  // Batch mode: no inputPst => read all .pst from inputDir (or default)
+  if (!inputPst) {
+    const srcDir = inputDir ? path.resolve(inputDir) : defaultInputDir;
+    const dstDir = outputDir ? path.resolve(outputDir) : defaultOutputDir;
+    await ensureDirs(srcDir, dstDir);
+    const entries = fs.existsSync(srcDir) ? await fsp.readdir(srcDir) : [];
+    const pstFiles = entries.filter((f) => f.toLowerCase().endsWith(".pst"));
+    if (pstFiles.length === 0) {
+      console.log(
+        `No .pst files found in ${srcDir}. Place files there and rerun.`
+      );
+      printHelp();
+      return;
+    }
+    for (const name of pstFiles) {
+      const inPath = path.join(srcDir, name);
+      const outPath = path.join(
+        dstDir,
+        path.basename(name, path.extname(name)) + ".pdf"
+      );
+      console.log(`Processing: ${inPath} -> ${outPath}`);
+      try {
+        await processSinglePst(
+          inPath,
+          outPath,
+          workdir,
+          keepWorkdir,
+          maxEmails
+        );
+      } catch (e) {
+        console.error(`Failed ${name}:`, e.message || e);
+      }
+    }
+    return;
+  }
+
+  // Single file mode
+  if (!fs.existsSync(inputPst)) {
+    console.error("Input .pst not found.");
+    process.exit(1);
+  }
+  if (!outPdf) {
+    const dstDir = outputDir ? path.resolve(outputDir) : defaultOutputDir;
+    await ensureDirs(dstDir);
+    outPdf = path.join(
+      dstDir,
+      path.basename(inputPst, path.extname(inputPst)) + ".pdf"
+    );
+  }
+  await processSinglePst(inputPst, outPdf, workdir, keepWorkdir, maxEmails);
 }
 
 if (require.main === module) {

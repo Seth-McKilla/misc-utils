@@ -26,10 +26,12 @@ pnpm run pst2pdf -- <path/to/archive.pst> -o out.pdf
 CLI:
 
 ```
-Usage: pst2pdf <input.pst> [options]
+Usage: pst2pdf [<input.pst>] [options]
 
 Options:
   -o, --output <file>     Output PDF path (default: <input>.pdf)
+  -i, --input-dir <dir>   Directory to read .pst files from (batch mode)
+  -O, --output-dir <dir>  Directory to write generated PDFs to (batch mode)
   -w, --workdir <dir>     Working directory for extracted files (default: temp)
   --keep-workdir          Do not delete working directory
   --max-emails <n>        Limit processed emails (for quick tests)
@@ -73,6 +75,30 @@ Run on a PST:
 
 ```
 pnpm run pst2pdf -- /path/to/mail.pst -o mail.pdf
+
+### Batch mode with input/output folders
+
+This tool creates two folders by default:
+
+- `pst2pdf/input_pst` — put your `.pst` files here
+- `pst2pdf/output_pdf` — generated PDFs will be placed here
+
+To run in batch mode (process all `.pst` files in `input_pst` and write PDFs to `output_pdf`):
+
+```
+
+pnpm run pst2pdf
+
+```
+
+You can override the folders:
+
+```
+
+pnpm run pst2pdf -- --input-dir /path/to/pst_dir --output-dir /path/to/pdf_dir
+
+```
+
 ```
 
 ## License
