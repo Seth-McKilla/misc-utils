@@ -4,10 +4,11 @@ Convert an Outlook .pst archive into a single PDF containing all email conversat
 
 ## Requirements
 
-- Linux/macOS with the `readpst` binary installed and available in PATH.
-  - On Ubuntu/Debian: `sudo apt-get install readpst`
-  - On macOS (Homebrew): `brew install libpst`
 - Node.js 18+ (recommended) with pnpm or npm.
+- The `readpst` binary is required, but you don't need it installed system-wide:
+  - Option A: Place the binary at `pst2pdf/bin/readpst` (make it executable)
+  - Option B: Provide a custom path via `--readpst-bin /path/to/readpst`
+  - Option C: Have `readpst` available on PATH (e.g., Ubuntu: `sudo apt-get install readpst`, macOS: `brew install libpst`)
 
 ## Usage
 
@@ -32,13 +33,14 @@ Options:
   -o, --output <file>     Output PDF path (default: <input>.pdf)
   -i, --input-dir <dir>   Directory to read .pst files from (batch mode)
   -O, --output-dir <dir>  Directory to write generated PDFs to (batch mode)
+  -R, --readpst-bin <p>   Path to readpst binary (default: ./bin/readpst or PATH)
   -w, --workdir <dir>     Working directory for extracted files (default: temp)
   --keep-workdir          Do not delete working directory
   --max-emails <n>        Limit processed emails (for quick tests)
   -h, --help              Show this help
 
 Requirements:
-  - The 'readpst' binary must be installed and available on PATH.
+  - Provide a 'readpst' binary either in pst2pdf/bin/readpst, via --readpst-bin, or on PATH.
 ```
 
 ## What it does
@@ -96,6 +98,20 @@ You can override the folders:
 ```
 
 pnpm run pst2pdf -- --input-dir /path/to/pst_dir --output-dir /path/to/pdf_dir
+
+### Using a local readpst without installing system-wide
+
+Place the `readpst` binary into `pst2pdf/bin/readpst` and ensure it is executable:
+
+```
+chmod +x pst2pdf/bin/readpst
+```
+
+Alternatively, specify a custom path:
+
+```
+pnpm run pst2pdf -- --readpst-bin /opt/libpst/bin/readpst
+```
 
 ```
 

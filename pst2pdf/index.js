@@ -25,13 +25,14 @@ Options:
   -o, --output <file>     Output PDF path (default: <input>.pdf)
   -i, --input-dir <dir>   Directory to read .pst files from (batch mode)
   -O, --output-dir <dir>  Directory to write generated PDFs to (batch mode)
+  -R, --readpst-bin <p>   Path to readpst binary (default: ./bin/readpst or PATH)
   -w, --workdir <dir>     Working directory for extracted files (default: temp)
 	--keep-workdir          Do not delete working directory
 	--max-emails <n>        Limit processed emails (for quick tests)
 	-h, --help              Show this help
 
 Requirements:
-	- The 'readpst' binary must be installed and available on PATH.
+	- Provide a 'readpst' binary either in pst2pdf/bin/readpst, via --readpst-bin, or on PATH.
 `;
   process.stdout.write(msg);
 }
@@ -44,23 +45,36 @@ function normalizeSubject(subj) {
   return s || "(no subject)";
 }
 
-async function runReadPst(pstPath, outDir) {
+async function runReadPst(readpstBin, pstPath, outDir) {
   await fsp.mkdir(outDir, { recursive: true });
   // Use readpst to emit each message as an .eml file, flattening the folder structure.
   // Common flags: -e (eml), -m (split), -b (output basename safe), -o outputDir
   const args = ["-e", "-m", "-b", "-o", outDir, pstPath];
-  const child = spawn("readpst", args, { stdio: ["ignore", "pipe", "pipe"] });
-  const out = [],
-    err = [];
-  child.stdout.on("data", (d) => out.push(d));
-  child.stderr.on("data", (d) => err.push(d));
-  const exit = await new Promise((resolve) => child.on("close", resolve));
-  if (exit !== 0) {
-    throw new Error(
-      `readpst failed (code ${exit})\n${Buffer.concat(err).toString()}`
-    );
-  }
-  return outDir;
+  return await new Promise((resolve, reject) => {
+    const child = spawn(readpstBin, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const out = [],
+      err = [];
+    child.stdout.on("data", (d) => out.push(d));
+    child.stderr.on("data", (d) => err.push(d));
+    child.on("error", (errEvt) => {
+      reject(
+        new Error(`Failed to run readpst at '${readpstBin}': ${errEvt.message}`)
+      );
+    });
+    child.on("close", (exit) => {
+      if (exit !== 0) {
+        reject(
+          new Error(
+            `readpst failed (code ${exit})\n${Buffer.concat(err).toString()}`
+          )
+        );
+      } else {
+        resolve(outDir);
+      }
+    });
+  });
 }
 
 async function listFilesRecursively(dir, exts = [".eml"]) {
@@ -191,6 +205,7 @@ async function ensureDirs(...dirs) {
 }
 
 async function processSinglePst(
+  readpstBin,
   inputPst,
   outPdf,
   workdir,
@@ -205,7 +220,7 @@ async function processSinglePst(
   if (!workdir) workdir = await fsp.mkdtemp(path.join(os.tmpdir(), "pst2pdf-"));
   try {
     const extractDir = path.join(workdir, "eml");
-    await runReadPst(inputPst, extractDir);
+    await runReadPst(readpstBin, inputPst, extractDir);
     const emlFiles = await listFilesRecursively(extractDir, [".eml"]);
     const emails = await parseEmails(emlFiles, maxEmails);
     const threads = groupByThread(emails);
@@ -236,6 +251,7 @@ async function main() {
   let maxEmails = 0;
   let inputDir = null;
   let outputDir = null;
+  let readpstCli = null;
   // Default folders inside this tool's directory
   const toolRoot = path.resolve(__dirname);
   const defaultInputDir = path.join(toolRoot, "input_pst");
@@ -248,6 +264,8 @@ async function main() {
       inputDir = args[++i];
     } else if ((a === "-O" || a === "--output-dir") && args[i + 1]) {
       outputDir = args[++i];
+    } else if ((a === "-R" || a === "--readpst-bin") && args[i + 1]) {
+      readpstCli = args[++i];
     } else if ((a === "-w" || a === "--workdir") && args[i + 1]) {
       workdir = args[++i];
     } else if (a === "--keep-workdir") {
@@ -262,6 +280,22 @@ async function main() {
   // If a positional arg is present and not a flag, treat it as inputPst
   if (args[0] && !args[0].startsWith("-")) {
     inputPst = args[0];
+  }
+
+  // Resolve readpst binary prioritizing CLI flag, then local bin, then PATH
+  const localBin = path.join(
+    toolRoot,
+    "bin",
+    process.platform === "win32" ? "readpst.exe" : "readpst"
+  );
+  let readpstBin = "readpst";
+  if (readpstCli) {
+    readpstBin = path.resolve(readpstCli);
+  } else if (fs.existsSync(localBin)) {
+    readpstBin = localBin;
+    try {
+      await fsp.chmod(localBin, 0o755);
+    } catch (_) {}
   }
 
   // Batch mode: no inputPst => read all .pst from inputDir (or default)
@@ -287,6 +321,7 @@ async function main() {
       console.log(`Processing: ${inPath} -> ${outPath}`);
       try {
         await processSinglePst(
+          readpstBin,
           inPath,
           outPath,
           workdir,
@@ -313,7 +348,14 @@ async function main() {
       path.basename(inputPst, path.extname(inputPst)) + ".pdf"
     );
   }
-  await processSinglePst(inputPst, outPdf, workdir, keepWorkdir, maxEmails);
+  await processSinglePst(
+    readpstBin,
+    inputPst,
+    outPdf,
+    workdir,
+    keepWorkdir,
+    maxEmails
+  );
 }
 
 if (require.main === module) {
