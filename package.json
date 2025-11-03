@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "heic2jpg": "node heic2jpg"
+    "heic2jpg": "node heic2jpg",
+    "pst2pdf": "node pst2pdf"
   },
   "keywords": [],
   "author": "",
@@ -11,7 +12,9 @@
   "description": "",
   "dependencies": {
     "heic-convert": "^2.1.0",
-    "self-update": "^0.0.1"
+    "self-update": "^0.0.1",
+    "mailparser": "^3.7.1",
+    "pdfkit": "^0.15.0"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
