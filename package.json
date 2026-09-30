@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "heic2jpg": "node heic2jpg",
+    "heic2jpg:clean": "node heic2jpg/clean",
     "pst2pdf": "node pst2pdf"
   },
   "keywords": [],
