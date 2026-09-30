@@ -45,7 +45,7 @@ function normalizeSubject(subj) {
   return s || "(no subject)";
 }
 
-async function runReadPst(readpstBin, pstPath, outDir) {
+async function runReadPst(readpstBin, pstPath, outDir, spawnEnv) {
   await fsp.mkdir(outDir, { recursive: true });
   // Use readpst to emit each message as an .eml file, flattening the folder structure.
   // Common flags: -e (eml), -m (split), -b (output basename safe), -o outputDir
@@ -53,6 +53,7 @@ async function runReadPst(readpstBin, pstPath, outDir) {
   return await new Promise((resolve, reject) => {
     const child = spawn(readpstBin, args, {
       stdio: ["ignore", "pipe", "pipe"],
+      env: spawnEnv ? { ...process.env, ...spawnEnv } : process.env,
     });
     const out = [],
       err = [];
@@ -197,6 +198,28 @@ async function renderPdf(threads, outPdf) {
   });
 }
 
+function isExecutable(filePath) {
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function findOnPath(cmd) {
+  const envPath = process.env.PATH || "";
+  const parts = envPath.split(path.delimiter).filter(Boolean);
+  const names = process.platform === "win32" ? [cmd, `${cmd}.exe`] : [cmd];
+  for (const dir of parts) {
+    for (const name of names) {
+      const full = path.join(dir, name);
+      if (fs.existsSync(full) && isExecutable(full)) return full;
+    }
+  }
+  return null;
+}
+
 async function ensureDirs(...dirs) {
   for (const d of dirs) {
     if (!d) continue;
@@ -210,7 +233,8 @@ async function processSinglePst(
   outPdf,
   workdir,
   keepWorkdir,
-  maxEmails
+  maxEmails,
+  spawnEnv
 ) {
   if (!outPdf)
     outPdf = path.resolve(
@@ -219,8 +243,8 @@ async function processSinglePst(
     );
   if (!workdir) workdir = await fsp.mkdtemp(path.join(os.tmpdir(), "pst2pdf-"));
   try {
-    const extractDir = path.join(workdir, "eml");
-    await runReadPst(readpstBin, inputPst, extractDir);
+  const extractDir = path.join(workdir, "eml");
+  await runReadPst(readpstBin, inputPst, extractDir, spawnEnv);
     const emlFiles = await listFilesRecursively(extractDir, [".eml"]);
     const emails = await parseEmails(emlFiles, maxEmails);
     const threads = groupByThread(emails);
@@ -288,14 +312,42 @@ async function main() {
     "bin",
     process.platform === "win32" ? "readpst.exe" : "readpst"
   );
-  let readpstBin = "readpst";
+  let readpstBin = null;
   if (readpstCli) {
-    readpstBin = path.resolve(readpstCli);
-  } else if (fs.existsSync(localBin)) {
+    const p = path.resolve(readpstCli);
+    if (fs.existsSync(p) && isExecutable(p)) {
+      readpstBin = p;
+    } else {
+      console.error(`Provided --readpst-bin is not executable: ${p}`);
+      process.exit(1);
+    }
+  } else if (fs.existsSync(localBin) && isExecutable(localBin)) {
     readpstBin = localBin;
-    try {
-      await fsp.chmod(localBin, 0o755);
-    } catch (_) {}
+  } else {
+    const found = findOnPath(
+      process.platform === "win32" ? "readpst.exe" : "readpst"
+    );
+    if (found) {
+      readpstBin = found;
+    }
+  }
+  if (!readpstBin) {
+    console.error(
+      `readpst not found. Do one of the following:\n` +
+        `  1) Place the binary at ${path.relative(
+          process.cwd(),
+          localBin
+        )} and make it executable (chmod +x)\n` +
+        `  2) Pass --readpst-bin /full/path/to/readpst\n` +
+        `  3) Install libpst so 'readpst' is on PATH (e.g., apt-get install readpst)`
+    );
+    process.exit(1);
+  }
+  // Prepare environment if using local readpst to point to bundled libs
+  let spawnEnv = null;
+  if (readpstBin === localBin) {
+    const localLib = path.join(toolRoot, 'lib');
+    spawnEnv = { LD_LIBRARY_PATH: `${localLib}:${process.env.LD_LIBRARY_PATH || ''}` };
   }
 
   // Batch mode: no inputPst => read all .pst from inputDir (or default)
@@ -326,7 +378,8 @@ async function main() {
           outPath,
           workdir,
           keepWorkdir,
-          maxEmails
+          maxEmails,
+          spawnEnv
         );
       } catch (e) {
         console.error(`Failed ${name}:`, e.message || e);
@@ -354,7 +407,8 @@ async function main() {
     outPdf,
     workdir,
     keepWorkdir,
-    maxEmails
+    maxEmails,
+    spawnEnv
   );
 }
 
